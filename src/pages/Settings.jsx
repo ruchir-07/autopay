@@ -2,13 +2,16 @@ import { useState } from 'react'
 import { Save, Key, Trash2, Download } from 'lucide-react'
 
 export default function Settings({ subscriptions, onClearAll }) {
-  const [apiKey, setApiKey] = useState(import.meta.env.VITE_ANTHROPIC_API_KEY || '')
+  const [apiKey, setApiKey] = useState(
+    localStorage.getItem('subtrack_api_key') || import.meta.env.VITE_ANTHROPIC_API_KEY || ''
+  )
   const [saved, setSaved] = useState(false)
 
   const handleSave = () => {
-    // In a real app, you'd store this securely
+    localStorage.setItem('subtrack_api_key', apiKey)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
+    window.dispatchEvent(new Event('storage'))
   }
 
   const exportData = () => {

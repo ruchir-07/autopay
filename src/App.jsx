@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
+import ApiKeyBanner from './components/ApiKeyBanner'
 import Dashboard from './pages/Dashboard'
 import Subscriptions from './pages/Subscriptions'
 import Analyzer from './pages/Analyzer'
@@ -9,6 +11,18 @@ import Settings from './pages/Settings'
 import { useSubscriptions } from './hooks/useSubscriptions'
 
 export default function App() {
+  const [hasApiKey, setHasApiKey] = useState(false)
+
+  useEffect(() => {
+    const checkApiKey = () => {
+      const key = localStorage.getItem('subtrack_api_key') || import.meta.env.VITE_ANTHROPIC_API_KEY
+      setHasApiKey(!!key)
+    }
+
+    checkApiKey()
+    window.addEventListener('storage', checkApiKey)
+    return () => window.removeEventListener('storage', checkApiKey)
+  }, [])
   const {
     subscriptions,
     addSubscription,
@@ -34,6 +48,7 @@ export default function App() {
     <div className="flex min-h-screen bg-bg">
       <Sidebar flaggedCount={getFlaggedCount()} />
       <main className="ml-60 flex-1 overflow-y-auto min-h-screen">
+        {!hasApiKey && <ApiKeyBanner />}
         <Routes>
           <Route path="/" element={
             <Dashboard

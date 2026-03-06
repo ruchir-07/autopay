@@ -1,6 +1,11 @@
-const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY
+function getApiKey() {
+  return localStorage.getItem('subtrack_api_key') || import.meta.env.VITE_ANTHROPIC_API_KEY || ''
+}
 
 export async function analyzeTransactions(rawText) {
+  const API_KEY = getApiKey()
+  if (!API_KEY) throw new Error('API key not set. Please add your Anthropic API key in Settings.')
+
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -58,6 +63,9 @@ Risk levels: 'high' = duplicate or likely forgotten, 'medium' = rarely used, 'lo
 }
 
 export async function getAIInsights(subscriptions) {
+  const API_KEY = getApiKey()
+  if (!API_KEY) throw new Error('API key not set. Please add your Anthropic API key in Settings.')
+
   const total = subscriptions.reduce((s, sub) => {
     const m = sub.cycle === 'yearly' ? sub.amount / 12 : sub.amount
     return s + m
@@ -104,6 +112,9 @@ Return ONLY a JSON object (no markdown):
 }
 
 export async function chatWithAI(messages, subscriptions) {
+  const API_KEY = getApiKey()
+  if (!API_KEY) throw new Error('API key not set. Please add your Anthropic API key in Settings.')
+
   const context = `The user has ${subscriptions.length} subscriptions totaling $${
     subscriptions.reduce((s, sub) => s + (sub.cycle === 'yearly' ? sub.amount / 12 : sub.amount), 0).toFixed(2)
   }/month. Their subscriptions: ${subscriptions.map(s => `${s.name} ($${s.amount}/${s.cycle})`).join(', ')}`
