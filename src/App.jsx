@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
 import ApiKeyBanner from './components/ApiKeyBanner'
+import Onboarding from './components/Onboarding'
 import Dashboard from './pages/Dashboard'
 import Subscriptions from './pages/Subscriptions'
 import Analyzer from './pages/Analyzer'
@@ -12,6 +13,7 @@ import { useSubscriptions } from './hooks/useSubscriptions'
 
 export default function App() {
   const [hasApiKey, setHasApiKey] = useState(false)
+  const [showOnboarding, setShowOnboarding] = useState(false)
 
   useEffect(() => {
     const checkApiKey = () => {
@@ -19,7 +21,16 @@ export default function App() {
       setHasApiKey(!!key)
     }
 
+    const checkOnboarding = () => {
+      const completed = localStorage.getItem('subtrack_onboarding_completed')
+      const subscriptions = localStorage.getItem('subtrack_subscriptions')
+      if (!completed && !subscriptions) {
+        setShowOnboarding(true)
+      }
+    }
+
     checkApiKey()
+    checkOnboarding()
     window.addEventListener('storage', checkApiKey)
     return () => window.removeEventListener('storage', checkApiKey)
   }, [])
@@ -43,6 +54,15 @@ export default function App() {
   }
 
   const sharedProps = { subscriptions, addSubscription, updateSubscription, deleteSubscription, flagSubscription }
+
+  if (showOnboarding) {
+    return (
+      <Onboarding
+        onComplete={() => setShowOnboarding(false)}
+        onSkip={() => setShowOnboarding(false)}
+      />
+    )
+  }
 
   return (
     <div className="flex min-h-screen bg-bg">
