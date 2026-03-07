@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Scan, Zap, CheckCircle, AlertTriangle, Plus, Loader } from 'lucide-react'
+import { Scan, Zap, CheckCircle, AlertTriangle, Plus, Loader, Upload, Play, Shield, AlertCircle } from 'lucide-react'
+import { motion } from 'framer-motion'
 import { analyzeTransactions } from '../utils/ai'
 
 const PLACEHOLDER = `Paste your bank statement or transaction history here.
@@ -17,6 +18,37 @@ Feb 18, 2026 DUOLINGO PLUS             -$6.99
 
 SubTrack AI will identify all recurring charges and flag any suspicious ones.`
 
+const EXAMPLE_TEMPLATES = [
+  {
+    label: 'Entertainment Stack',
+    transactions: `Mar 15, 2026  NETFLIX.COM               -$15.99
+Mar 15, 2026  SPOTIFY USA               -$9.99
+Mar 15, 2026  DISNEY PLUS               -$7.99
+Mar 14, 2026  HBO MAX SUBSCRIPTION      -$19.99`
+  },
+  {
+    label: 'AI & Productivity',
+    transactions: `Mar 12, 2026  OPENAI *CHATGPT           -$20.00
+Mar 12, 2026  NOTION LABS INC           -$16.00
+Mar 10, 2026  FIGMA INC                 -$12.00
+Mar 8, 2026   GRAMMARLY                 -$12.00`
+  },
+  {
+    label: 'Cloud & Software',
+    transactions: `Mar 20, 2026  ADOBE SYSTEMS INC         -$54.99
+Mar 18, 2026  MICROSOFT AZURE           -$50.00
+Mar 15, 2026  AWS SERVICES              -$45.67
+Mar 10, 2026  GITHUB COPILOT            -$10.00`
+  },
+  {
+    label: 'Fitness & Health',
+    transactions: `Mar 10, 2026  GYM MEMBERSHIP            -$49.99
+Mar 8, 2026   PELOTON APP               -$44.00
+Mar 5, 2026   CALM APP PREMIUM          -$14.99
+Mar 1, 2026   MYFITNESSPAL PLUS         -$9.99`
+  }
+]
+
 const RISK_CONFIG = {
   high: { color: 'text-danger', bg: 'bg-danger/10 border-danger/30', label: '⚠ High Risk' },
   medium: { color: 'text-warn', bg: 'bg-warn/10 border-warn/30', label: '◉ Review' },
@@ -30,6 +62,20 @@ export default function Analyzer({ addSubscription }) {
   const [results, setResults] = useState(null)
   const [error, setError] = useState(null)
   const [added, setAdded] = useState(new Set())
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const content = event.target?.result
+      if (typeof content === 'string') {
+        setText(content)
+      }
+    }
+    reader.readAsText(file)
+  }
 
   const analyze = async () => {
     if (!text.trim()) return
@@ -67,6 +113,28 @@ export default function Analyzer({ addSubscription }) {
     })
   }
 
+  const handleAddAllSafe = () => {
+    results?.forEach(sub => {
+      if (!added.has(sub.name) && sub.risk !== 'high') handleAdd(sub)
+    })
+  }
+
+  const handleAddFlagRisky = () => {
+    results?.forEach(sub => {
+      if (!added.has(sub.name)) handleAdd(sub)
+    })
+  }
+
+  const handleSkipHighRisk = () => {
+    results?.forEach(sub => {
+      if (!added.has(sub.name) && sub.risk !== 'high') handleAdd(sub)
+    })
+  }
+
+  const highRiskCount = results?.filter(s => s.risk === 'high').length || 0
+  const mediumRiskCount = results?.filter(s => s.risk === 'medium').length || 0
+  const lowRiskCount = results?.filter(s => s.risk !== 'high' && s.risk !== 'medium').length || 0
+
   return (
     <div className="p-8 animate-fade-in max-w-4xl">
       <div className="mb-8">
@@ -90,7 +158,14 @@ export default function Analyzer({ addSubscription }) {
           className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-text text-sm outline-none focus:border-accent/50 transition-colors resize-none font-mono leading-relaxed"
         />
         <div className="flex items-center justify-between mt-4">
-          <p className="text-muted text-xs">Your data is processed privately and never stored on our servers.</p>
+          <div className="flex items-center gap-3">
+            <p className="text-muted text-xs">Your data is processed privately.</p>
+            <label className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border text-muted hover:text-text hover:border-accent/30 transition-colors cursor-pointer text-xs">
+              <Upload size={14} />
+              Upload File
+              <input type="file" accept=".pdf,.csv,.txt" onChange={handleFileUpload} className="hidden" />
+            </label>
+          </div>
           <button
             onClick={analyze}
             disabled={!text.trim() || loading}
@@ -98,6 +173,23 @@ export default function Analyzer({ addSubscription }) {
           >
             {loading ? <><Loader size={15} className="animate-spin" /> Analyzing...</> : <><Zap size={15} /> Analyze with AI</>}
           </button>
+        </div>
+      </div>
+
+      {/* Example templates */}
+      <div className="mb-6">
+        <p className="text-xs text-muted font-mono uppercase tracking-wider mb-2">Try a demo with example transactions:</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {EXAMPLE_TEMPLATES.map((template, i) => (
+            <button
+              key={i}
+              onClick={() => setText(template.transactions)}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-muted hover:text-text hover:border-accent/50 transition-colors text-xs"
+            >
+              <Play size={12} />
+              {template.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -110,36 +202,88 @@ export default function Analyzer({ addSubscription }) {
 
       {/* Results */}
       {results && (
-        <div className="animate-slide-up">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="animate-slide-up">
+          {/* Risk Summary */}
+          <div className="bg-card border border-border rounded-xl p-4 mb-6 grid grid-cols-3 gap-4">
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-danger">{highRiskCount}</p>
+                <p className="text-xs text-muted mt-1">High Risk</p>
+              </div>
+            </motion.div>
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-warn">{mediumRiskCount}</p>
+                <p className="text-xs text-muted mt-1">To Review</p>
+              </div>
+            </motion.div>
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-accent">{lowRiskCount}</p>
+                <p className="text-xs text-muted mt-1">Look Fine</p>
+              </div>
+            </motion.div>
+          </div>
+
+          {/* Bulk actions */}
+          <div className="bg-surface border border-accent/20 rounded-xl p-4 mb-6">
+            <p className="text-xs text-muted font-mono uppercase tracking-wider mb-3">BULK ACTIONS</p>
+            <div className="grid grid-cols-3 gap-3">
+              <button
+                onClick={handleAddAll}
+                className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-accent text-bg text-sm font-medium hover:bg-accent-dim transition-colors"
+              >
+                <Plus size={14} />
+                Add All
+              </button>
+              <button
+                onClick={handleAddFlagRisky}
+                className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-warn/20 border border-warn/30 text-warn text-sm font-medium hover:bg-warn/30 transition-colors"
+              >
+                <AlertCircle size={14} />
+                Add All + Flag Risky
+              </button>
+              <button
+                onClick={handleSkipHighRisk}
+                className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-muted hover:text-text hover:border-accent/30 text-sm font-medium transition-colors"
+              >
+                <Shield size={14} />
+                Skip High Risk
+              </button>
+            </div>
+          </div>
+
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="font-display text-xl text-text">Found {results.length} Subscriptions</h2>
-              <p className="text-muted text-sm">
-                {results.filter(s => s.risk === 'high').length} high risk ·{' '}
-                {results.filter(s => s.risk === 'medium').length} need review
-              </p>
             </div>
-            <button
-              onClick={handleAddAll}
-              className="flex items-center gap-2 bg-card border border-border px-4 py-2 rounded-xl text-sm text-muted hover:text-text hover:border-accent/30 transition-colors"
-            >
-              <Plus size={14} /> Add All to Tracker
-            </button>
           </div>
 
           <div className="space-y-3">
             {results.map((sub, i) => {
               const risk = RISK_CONFIG[sub.risk] || RISK_CONFIG.none
               const isAdded = added.has(sub.name)
+              const confidence = sub.confidence || 85
               return (
-                <div key={i} className={`border rounded-xl p-4 ${sub.risk === 'high' ? 'border-danger/30 bg-danger/5' : sub.risk === 'medium' ? 'border-warn/20 bg-warn/5' : 'border-border bg-card'}`}>
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 10, x: -20 }}
+                  animate={{ opacity: 1, y: 0, x: 0 }}
+                  transition={{ delay: i * 0.05, duration: 0.3 }}
+                  className={`border rounded-xl p-4 ${sub.risk === 'high' ? 'border-danger/30 bg-danger/5' : sub.risk === 'medium' ? 'border-warn/20 bg-warn/5' : 'border-border bg-card'}`}
+                >
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-1">
                       <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white text-sm font-bold" style={{ backgroundColor: sub.color || '#2a2a3d' }}>
                         {sub.name.charAt(0)}
                       </div>
-                      <div>
-                        <p className="text-text font-medium">{sub.name}</p>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="text-text font-medium">{sub.name}</p>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-accent/20 text-accent border border-accent/30">
+                            {confidence}%
+                          </span>
+                        </div>
                         <p className="text-muted text-xs">{sub.category} · {sub.cycle}</p>
                       </div>
                     </div>
@@ -167,11 +311,11 @@ export default function Analyzer({ addSubscription }) {
                       {sub.riskReason}
                     </div>
                   )}
-                </div>
+                </motion.div>
               )
             })}
           </div>
-        </div>
+        </motion.div>
       )}
     </div>
   )
