@@ -1,14 +1,102 @@
-import { useState } from 'react'
-import { AlertTriangle, HelpCircle, Trash2, CheckCircle, Loader, Sparkles } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { AlertTriangle, HelpCircle, Trash2, CheckCircle, Loader, Sparkles, Eye, EyeOff, TrendingUp } from 'lucide-react'
+import { motion } from 'framer-motion'
 import { getAIInsights } from '../utils/ai'
+import { useToast } from '../contexts/ToastContext'
 
 export default function Alerts({ subscriptions, updateSubscription, deleteSubscription }) {
   const [insights, setInsights] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [ignoredAlerts, setIgnoredAlerts] = useState(() => {
+    const saved = localStorage.getItem('ignored_alerts')
+    return saved ? JSON.parse(saved) : []
+  })
+  const { addToast } = useToast()
+
+  useEffect(() => {
+    localStorage.setItem('ignored_alerts', JSON.stringify(ignoredAlerts))
+  }, [ignoredAlerts])
 
   const flagged = subscriptions.filter(s => s.status === 'flagged')
   const unknown = subscriptions.filter(s => s.status === 'unknown')
+
+  const smartDetection = useMemo(() => {
+    const now = new Date()
+    const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000)
+    const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+
+    const overlaps = []
+    const categoryMap = {}
+
+    subscriptions.forEach(sub => {
+      if (!categoryMap[sub.category]) categoryMap[sub.category] = []
+      categoryMap[sub.category].push(sub)
+    })
+
+    Object.entries(categoryMap).forEach(([category, subs]) => {
+      if (subs.length >= 2) {
+        overlaps.push({
+          id: `overlap_${category}`,
+          type: 'overlap',
+          category,
+          subscriptions: subs,
+          message: `You have ${subs.length} ${category} subscriptions that might overlap`
+        })
+      }
+    })
+
+    const forgotten = subscriptions.filter(sub => {
+      const lastBilled = new Date(sub.lastBilled || sub.createdAt || now)
+      return lastBilled < sixtyDaysAgo && sub.status !== 'cancelled'
+    }).map(sub => ({
+      id: `forgotten_${sub.id}`,
+      type: 'forgotten',
+      subscription: sub,
+      message: `${sub.name} hasn't been billed in over 60 days`
+    }))
+
+    const renewals = subscriptions.filter(sub => {
+      if (!sub.renewalDate || sub.cycle !== 'yearly') return false
+      const renewal = new Date(sub.renewalDate)
+      return renewal > now && renewal <= thirtyDaysFromNow
+    }).map(sub => {
+      const renewal = new Date(sub.renewalDate)
+      const daysUntil = Math.ceil((renewal - now) / (24 * 60 * 60 * 1000))
+      return {
+        id: `renewal_${sub.id}`,
+        type: 'renewal',
+        subscription: sub,
+        daysUntil,
+        message: `${sub.name} renews in ${daysUntil} day${daysUntil === 1 ? '' : 's'} ($${sub.amount})`
+      }
+    })
+
+    return { overlaps, forgotten, renewals }
+  }, [subscriptions])
+
+  const monthlyComparison = useMemo(() => {
+    const now = new Date()
+    const currentMonth = subscriptions.reduce((sum, sub) => {
+      if (sub.cycle === 'monthly') return sum + sub.amount
+      if (sub.cycle === 'yearly') return sum + (sub.amount / 12)
+      if (sub.cycle === 'weekly') return sum + (sub.amount * 4.33)
+      return sum
+    }, 0)
+
+    return currentMonth
+  }, [subscriptions])
+
+  const toggleIgnore = (alertId) => {
+    setIgnoredAlerts(prev => {
+      if (prev.includes(alertId)) {
+        return prev.filter(id => id !== alertId)
+      }
+      return [...prev, alertId]
+    })
+  }
+
+  const isIgnored = (alertId) => ignoredAlerts.includes(alertId)
 
   const loadInsights = async () => {
     setLoading(true)
@@ -23,15 +111,151 @@ export default function Alerts({ subscriptions, updateSubscription, deleteSubscr
     }
   }
 
-  const resolve = (id) => updateSubscription(id, { status: 'active' })
-  const dismiss = (id) => deleteSubscription(id)
+  const resolve = (id) => {
+    updateSubscription(id, { status: 'active' })
+    addToast('Subscription marked as active', 'success')
+  }
+
+  const dismiss = (id) => {
+    deleteSubscription(id)
+    addToast('Subscription cancelled', 'success')
+  }
+
+  const totalSmartAlerts = smartDetection.overlaps.length + smartDetection.forgotten.length + smartDetection.renewals.length
+  const visibleSmartAlerts = totalSmartAlerts - smartDetection.overlaps.filter(a => isIgnored(a.id)).length - smartDetection.forgotten.filter(a => isIgnored(a.id)).length - smartDetection.renewals.filter(a => isIgnored(a.id)).length
 
   return (
     <div className="p-8 animate-fade-in">
       <div className="mb-8">
         <h1 className="font-display text-3xl text-text mb-1">Alerts</h1>
-        <p className="text-muted text-sm">{flagged.length + unknown.length} subscriptions need your attention</p>
+        <p className="text-muted text-sm">{flagged.length + unknown.length + visibleSmartAlerts} subscriptions need your attention</p>
       </div>
+
+      {/* Monthly Spend Comparison */}
+      <div className="bg-card border border-border rounded-2xl p-6 mb-8">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center">
+            <TrendingUp size={18} className="text-accent" />
+          </div>
+          <div>
+            <p className="text-text font-medium">Monthly Spending</p>
+            <p className="text-muted text-xs">Normalized from all billing cycles</p>
+          </div>
+        </div>
+        <div className="text-3xl font-bold text-accent">${monthlyComparison.toFixed(2)}</div>
+        <p className="text-muted text-sm mt-2">Per month across all subscriptions</p>
+      </div>
+
+      {/* Smart Detection */}
+      {visibleSmartAlerts > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8"
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <Sparkles size={16} className="text-accent" />
+            <h2 className="text-text font-medium">Smart Detection ({visibleSmartAlerts})</h2>
+          </div>
+
+          {smartDetection.overlaps.map(alert => !isIgnored(alert.id) && (
+            <motion.div
+              key={alert.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-accent/5 border border-accent/20 rounded-xl p-4 mb-3"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-text font-medium text-sm mb-2">{alert.message}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {alert.subscriptions.map(sub => (
+                      <span key={sub.id} className="text-xs px-2 py-1 bg-accent/10 border border-accent/20 rounded text-text">
+                        {sub.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  onClick={() => toggleIgnore(alert.id)}
+                  className="flex-shrink-0 p-2 hover:bg-accent/10 rounded-lg transition-colors"
+                  title={isIgnored(alert.id) ? 'Show alert' : 'Ignore alert'}
+                >
+                  {isIgnored(alert.id) ? (
+                    <EyeOff size={14} className="text-muted" />
+                  ) : (
+                    <Eye size={14} className="text-muted" />
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          ))}
+
+          {smartDetection.forgotten.map(alert => !isIgnored(alert.id) && (
+            <motion.div
+              key={alert.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-warn/5 border border-warn/20 rounded-xl p-4 mb-3"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3 flex-1">
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white text-sm font-bold flex-shrink-0" style={{ backgroundColor: alert.subscription.color || '#2a2a3d' }}>
+                    {alert.subscription.name.charAt(0)}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-text font-medium text-sm">{alert.message}</p>
+                    <p className="text-muted text-xs mt-1">{alert.subscription.category} · ${alert.subscription.amount}/{alert.subscription.cycle}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => toggleIgnore(alert.id)}
+                  className="flex-shrink-0 p-2 hover:bg-warn/10 rounded-lg transition-colors"
+                  title={isIgnored(alert.id) ? 'Show alert' : 'Ignore alert'}
+                >
+                  {isIgnored(alert.id) ? (
+                    <EyeOff size={14} className="text-muted" />
+                  ) : (
+                    <Eye size={14} className="text-muted" />
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          ))}
+
+          {smartDetection.renewals.map(alert => !isIgnored(alert.id) && (
+            <motion.div
+              key={alert.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-accent/5 border border-accent/20 rounded-xl p-4 mb-3"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3 flex-1">
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white text-sm font-bold flex-shrink-0" style={{ backgroundColor: alert.subscription.color || '#2a2a3d' }}>
+                    {alert.subscription.name.charAt(0)}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-text font-medium text-sm">{alert.message}</p>
+                    <p className="text-accent text-xs mt-1 font-semibold">{alert.daysUntil} day countdown</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => toggleIgnore(alert.id)}
+                  className="flex-shrink-0 p-2 hover:bg-accent/10 rounded-lg transition-colors"
+                  title={isIgnored(alert.id) ? 'Show alert' : 'Ignore alert'}
+                >
+                  {isIgnored(alert.id) ? (
+                    <EyeOff size={14} className="text-muted" />
+                  ) : (
+                    <Eye size={14} className="text-muted" />
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          ))}
+        </motion.div>
+      )}
 
       {/* AI Insights button */}
       <div className="bg-gradient-to-r from-accent/5 to-blue-500/5 border border-accent/20 rounded-2xl p-5 mb-8">

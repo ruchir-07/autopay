@@ -10,6 +10,7 @@ import Chat from './pages/Chat'
 import Alerts from './pages/Alerts'
 import Settings from './pages/Settings'
 import { useSubscriptions } from './hooks/useSubscriptions'
+import { ToastProvider } from './contexts/ToastContext'
 
 export default function App() {
   const [hasApiKey, setHasApiKey] = useState(false)
@@ -65,27 +66,29 @@ export default function App() {
   }
 
   return (
-    <div className="flex min-h-screen bg-bg">
-      <Sidebar flaggedCount={getFlaggedCount()} />
-      <main className="ml-60 flex-1 overflow-y-auto min-h-screen">
-        {!hasApiKey && <ApiKeyBanner />}
-        <Routes>
-          <Route path="/" element={
-            <Dashboard
-              {...sharedProps}
-              getMonthlyTotal={getMonthlyTotal}
-              getYearlyTotal={getYearlyTotal}
-              getFlaggedCount={getFlaggedCount}
-              getByCategory={getByCategory}
-            />
-          } />
-          <Route path="/subscriptions" element={<Subscriptions {...sharedProps} />} />
-          <Route path="/analyze" element={<Analyzer addSubscription={addSubscription} />} />
-          <Route path="/chat" element={<Chat subscriptions={subscriptions} />} />
-          <Route path="/alerts" element={<Alerts {...sharedProps} />} />
-          <Route path="/settings" element={<Settings subscriptions={subscriptions} onClearAll={clearAll} />} />
-        </Routes>
-      </main>
-    </div>
+    <ToastProvider>
+      <div className="flex min-h-screen bg-bg">
+        <Sidebar flaggedCount={getFlaggedCount()} />
+        <main className="ml-60 flex-1 overflow-y-auto min-h-screen">
+          {!hasApiKey && <ApiKeyBanner />}
+          <Routes>
+            <Route path="/" element={
+              <Dashboard
+                {...sharedProps}
+                getMonthlyTotal={getMonthlyTotal}
+                getYearlyTotal={getYearlyTotal}
+                getFlaggedCount={getFlaggedCount}
+                getByCategory={getByCategory}
+              />
+            } />
+            <Route path="/subscriptions" element={<Subscriptions {...sharedProps} />} />
+            <Route path="/analyze" element={<Analyzer addSubscription={addSubscription} />} />
+            <Route path="/chat" element={<Chat subscriptions={subscriptions} />} />
+            <Route path="/alerts" element={<Alerts {...sharedProps} />} />
+            <Route path="/settings" element={<Settings subscriptions={subscriptions} onClearAll={clearAll} />} />
+          </Routes>
+        </main>
+      </div>
+    </ToastProvider>
   )
 }
