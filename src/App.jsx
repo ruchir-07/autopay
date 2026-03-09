@@ -8,6 +8,7 @@ import Subscriptions from './pages/Subscriptions'
 import Analyzer from './pages/Analyzer'
 import Chat from './pages/Chat'
 import Alerts from './pages/Alerts'
+import Calendar from './pages/Calendar'
 import Settings from './pages/Settings'
 import { useSubscriptions } from './hooks/useSubscriptions'
 import { ToastProvider } from './contexts/ToastContext'
@@ -35,6 +36,7 @@ export default function App() {
     window.addEventListener('storage', checkApiKey)
     return () => window.removeEventListener('storage', checkApiKey)
   }, [])
+
   const {
     subscriptions,
     addSubscription,
@@ -84,6 +86,7 @@ export default function App() {
             <Route path="/subscriptions" element={<Subscriptions {...sharedProps} />} />
             <Route path="/analyze" element={<Analyzer addSubscription={addSubscription} />} />
             <Route path="/chat" element={<Chat subscriptions={subscriptions} />} />
+            <Route path="/calendar" element={<Calendar subscriptions={subscriptions} />} />
             <Route path="/alerts" element={<Alerts {...sharedProps} />} />
             <Route path="/settings" element={<Settings subscriptions={subscriptions} onClearAll={clearAll} />} />
           </Routes>
